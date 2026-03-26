@@ -1,0 +1,27 @@
+{
+  "name": "design-spec",
+  "version": "1.0.0",
+  "description": "AI-powered design system manifesto generator for frontend projects",
+  "main": "index.js",
+  "bin": {
+    "design-spec": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "design-system",
+    "cli",
+    "ai",
+    "frontend",
+    "ux"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "inquirer": "^8.2.7",
+    "openai": "^6.33.0",
+    "ora": "^9.3.0"
+  }
+}
