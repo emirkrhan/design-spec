@@ -22,9 +22,9 @@ const client = new OpenAI({
 
 const DEFAULTS = {
   outputFile: 'DESIGN.md',
-  maxFiles: 3, // component files
+  maxFiles: 8, // component files
   maxChars: 2000, // per snippet default
-  maxTotalChars: 8000, // payload hard cap
+  maxTotalChars: 20000, // payload hard cap
   maxFileSizeBytes: 200 * 1024, // 200KB
 };
 
@@ -43,6 +43,34 @@ const SKIP_DIRS = new Set([
   '.cache',
   '.yarn',
   '.pnpm',
+  // Angular
+  '.angular',
+  // Nx monorepo
+  '.nx',
+  // Vite
+  '.vite',
+  // Generic build outputs
+  'tmp',
+  'temp',
+  '__pycache__',
+  '.sass-cache',
+  'generated',
+  'gen',
+  // iOS / Android (Ionic, Capacitor, React Native)
+  'ios',
+  'android',
+  'platforms',
+  'www',
+  // Storybook
+  'storybook-static',
+]);
+
+const SKIP_FILE_EXACT = new Set([
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'bun.lockb',
+  'composer.lock',
 ]);
 
 const SKIP_FILE_PARTS = [
@@ -89,7 +117,9 @@ const GLOBAL_STYLE_BASENAMES = [
 
 const COMPONENT_MATCHERS = [
   { key: 'button', label: 'Button', weight: 60 },
+  { key: 'btn', label: 'Button', weight: 58 },
   { key: 'input', label: 'Input', weight: 55 },
+  { key: 'field', label: 'Input', weight: 52 },
   { key: 'card', label: 'Card', weight: 50 },
   { key: 'layout', label: 'Layout', weight: 48 },
   { key: 'navbar', label: 'Nav', weight: 45 },
@@ -97,9 +127,39 @@ const COMPONENT_MATCHERS = [
   { key: 'header', label: 'Header', weight: 40 },
   { key: 'footer', label: 'Footer', weight: 40 },
   { key: 'sidebar', label: 'Sidebar', weight: 38 },
+  { key: 'drawer', label: 'Sidebar', weight: 36 },
   { key: 'modal', label: 'Modal', weight: 38 },
+  { key: 'dialog', label: 'Modal', weight: 37 },
   { key: 'table', label: 'Table', weight: 35 },
+  { key: 'list', label: 'List', weight: 34 },
   { key: 'form', label: 'Form', weight: 35 },
+  { key: 'select', label: 'Select', weight: 33 },
+  { key: 'dropdown', label: 'Select', weight: 32 },
+  { key: 'badge', label: 'Badge', weight: 30 },
+  { key: 'tag', label: 'Badge', weight: 28 },
+  { key: 'chip', label: 'Badge', weight: 28 },
+  { key: 'alert', label: 'Alert', weight: 30 },
+  { key: 'toast', label: 'Alert', weight: 29 },
+  { key: 'notification', label: 'Alert', weight: 28 },
+  { key: 'tab', label: 'Tabs', weight: 32 },
+  { key: 'tabs', label: 'Tabs', weight: 33 },
+  { key: 'pagination', label: 'Pagination', weight: 30 },
+  { key: 'breadcrumb', label: 'Breadcrumb', weight: 28 },
+  { key: 'avatar', label: 'Avatar', weight: 28 },
+  { key: 'icon', label: 'Icon', weight: 25 },
+  { key: 'spinner', label: 'Spinner', weight: 25 },
+  { key: 'loader', label: 'Spinner', weight: 24 },
+  { key: 'skeleton', label: 'Spinner', weight: 24 },
+  { key: 'tooltip', label: 'Tooltip', weight: 27 },
+  { key: 'popover', label: 'Tooltip', weight: 26 },
+  { key: 'menu', label: 'Menu', weight: 30 },
+  { key: 'accordion', label: 'Accordion', weight: 28 },
+  { key: 'collapse', label: 'Accordion', weight: 27 },
+  { key: 'grid', label: 'Grid', weight: 28 },
+  { key: 'container', label: 'Layout', weight: 27 },
+  { key: 'wrapper', label: 'Layout', weight: 25 },
+  { key: 'section', label: 'Layout', weight: 25 },
+  { key: 'page', label: 'Page', weight: 22 },
 ];
 
 function stderr(msg) {
@@ -123,6 +183,7 @@ function shouldSkipDir(name) {
 }
 
 function shouldSkipFileName(nameLower) {
+  if (SKIP_FILE_EXACT.has(nameLower)) return true;
   return SKIP_FILE_PARTS.some(part => nameLower.includes(part));
 }
 
@@ -233,7 +294,7 @@ Commands:
   design-spec patch <file>        Extract new patterns from a file and add them to DESIGN.md
 
 Options:
-  --max-files <n>        Max component files to include (default: ${DEFAULTS.maxFiles})
+  --max-files <n>        Max component files to include (default: ${DEFAULTS.maxFiles}, increase for larger projects)
   --max-chars <n>        Max characters per snippet (default: ${DEFAULTS.maxChars})
   --max-total-chars <n>  Hard cap for entire payload (default: ${DEFAULTS.maxTotalChars})
   --max-file-size <n>    Skip files larger than n bytes (default: ${DEFAULTS.maxFileSizeBytes})
@@ -433,11 +494,11 @@ function scoreComponentFile(f, match) {
 
   if (f.ext === '.tsx') s += 20;
   else if (f.ext === '.jsx') s += 18;
+  else if (f.ext === '.vue') s += 20;   // SFC: template + styles in one file
+  else if (f.ext === '.svelte') s += 20; // SFC: template + styles in one file
+  else if (f.ext === '.html') s += 18;   // Angular/plain templates: pure markup
   else if (f.ext === '.ts') s += 15;
   else if (f.ext === '.js') s += 12;
-  else if (f.ext === '.vue') s += 16;
-  else if (f.ext === '.svelte') s += 16;
-  else if (f.ext === '.html') s += 5;
 
   if (f.size >= 300 && f.size <= 12_000) s += 10;
   if (f.size > 50_000) s -= 25;
@@ -447,30 +508,85 @@ function scoreComponentFile(f, match) {
   return s;
 }
 
-function selectComponents(files, limit) {
-  const candidates = [];
+function isSharedComponent(f) {
+  return (
+    f.rel.includes('/shared/') ||
+    f.rel.includes('/common/') ||
+    f.rel.includes('/core/') ||
+    f.rel.includes('/ui/') ||
+    f.rel.includes('/primitives/')
+  );
+}
 
+function selectComponents(files, limit) {
+  const selectedAbsPaths = new Set();
+  const selected = [];
+
+  // Pass 1: name-matched components (existing logic)
+  const candidates = [];
   for (const f of files) {
     if (!COMPONENT_EXTS.has(f.ext)) continue;
     if (f.name.endsWith('.config.js') || f.name.endsWith('.config.ts')) continue;
-
     const match = classifyComponent(f.base);
     if (!match) continue;
-
     candidates.push({ f, match, score: scoreComponentFile(f, match) });
   }
-
   candidates.sort((a, b) => b.score - a.score);
 
-  const selected = [];
-  const usedLabels = new Set();
-
+  const labelCounts = {};
   for (const item of candidates) {
     if (selected.length >= limit) break;
-    if (usedLabels.has(item.match.label)) continue;
-
+    const label = item.match.label;
+    const count = labelCounts[label] || 0;
+    if (count >= 2) continue;
     selected.push(item);
-    usedLabels.add(item.match.label);
+    selectedAbsPaths.add(item.f.abs);
+    labelCounts[label] = count + 1;
+  }
+
+  // Pass 2: fallback — pick UI-rich files from /components/ that name-matching missed.
+  // These are page-level or feature components that contain real HTML patterns.
+  if (selected.length < limit) {
+    const fallbackCandidates = [];
+
+    for (const f of files) {
+      if (!COMPONENT_EXTS.has(f.ext)) continue;
+      if (f.name.endsWith('.config.js') || f.name.endsWith('.config.ts')) continue;
+      if (selectedAbsPaths.has(f.abs)) continue;
+      // Must be inside a components or pages-like directory
+      if (
+        !f.rel.includes('/components/') &&
+        !f.rel.includes('/component/') &&
+        !f.rel.includes('/views/') &&
+        !f.rel.includes('/pages/') &&
+        !f.rel.includes('/features/') &&
+        !f.rel.includes('/modules/')
+      ) continue;
+      // Size sweet spot: big enough to have real markup, small enough to be readable
+      if (f.size < 500 || f.size > 20_000) continue;
+
+      let score = 0;
+      if (f.ext === '.tsx') score += 20;
+      else if (f.ext === '.jsx') score += 18;
+      else if (f.ext === '.vue') score += 20;
+      else if (f.ext === '.svelte') score += 20;
+      else if (f.ext === '.html') score += 18;
+      else if (f.ext === '.js') score += 12;
+      else if (f.ext === '.ts') score += 10;
+      // Prefer larger files — more HTML patterns
+      score += Math.min(20, Math.floor(f.size / 1000));
+      score += Math.max(0, 15 - f.depth * 2);
+
+      fallbackCandidates.push({ f, match: { label: 'Component' }, score });
+    }
+
+    fallbackCandidates.sort((a, b) => b.score - a.score);
+
+    for (const item of fallbackCandidates) {
+      if (selected.length >= limit) break;
+      selected.push(item);
+      selectedAbsPaths.add(item.f.abs);
+    }
   }
 
   return selected;
@@ -531,6 +647,326 @@ function extractComponentSnippet(abs, maxChars) {
 
   const sliced = text.slice(start);
   return truncateText(stripEmptyEdges(sliced), maxChars);
+}
+
+// ---------------------------------------------------------------------------
+// Static frequency analysis
+// ---------------------------------------------------------------------------
+
+// Extracts hex colors, rgb/hsl literals, and CSS custom properties from a
+// single file's text. Returns arrays of raw string matches (not deduplicated).
+function extractColorsFromText(text) {
+  const colors = [];
+
+  // hex: #abc, #aabbcc, #aabbccdd
+  const hexRe = /#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g;
+  let m;
+  while ((m = hexRe.exec(text)) !== null) colors.push(m[0].toLowerCase());
+
+  // rgb() / rgba() / hsl() / hsla()
+  const funcRe = /\b(rgba?|hsla?)\s*\([^)]{3,60}\)/g;
+  while ((m = funcRe.exec(text)) !== null) colors.push(m[0].replace(/\s+/g, ''));
+
+  // CSS custom properties used as values: var(--foo)
+  const varRe = /var\(\s*(--[\w-]+)\s*\)/g;
+  while ((m = varRe.exec(text)) !== null) colors.push(m[1]);
+
+  return colors;
+}
+
+// Extracts CSS custom property *definitions* from style text: --foo: value
+function extractCSSVarDefinitions(text) {
+  const defs = {};
+  const re = /(--[\w-]+)\s*:\s*([^;}{]+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1].trim();
+    const value = m[2].trim();
+    // Only keep color-looking values
+    if (
+      value.startsWith('#') ||
+      /^(rgb|rgba|hsl|hsla)\s*\(/.test(value) ||
+      /^(transparent|currentColor|inherit|initial)$/.test(value)
+    ) {
+      defs[name] = value;
+    }
+  }
+  return defs;
+}
+
+// Extracts CSS class *definitions* from style text: .foo { ... }
+function extractClassDefinitions(text) {
+  const classes = new Set();
+  // Match .classname (not :pseudo, not .module-style, not keyframe %)
+  const re = /\.([a-zA-Z_-][a-zA-Z0-9_-]+)\s*[{,\s:]/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const cls = m[1];
+    // Skip Angular/BEM-style private classes starting with ng- or _
+    if (cls.startsWith('ng-')) continue;
+    classes.add(cls);
+  }
+  return classes;
+}
+
+// Counts how many files reference each CSS class name (via className=, class=, or bare usage in templates)
+function countClassUsageAcrossFiles(allFiles, definedClasses, opts) {
+  const counts = {};
+  for (const cls of definedClasses) counts[cls] = 0;
+
+  const templateExts = new Set(['.html', '.jsx', '.tsx', '.vue', '.svelte', '.js', '.ts']);
+
+  for (const f of allFiles) {
+    if (!templateExts.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+
+    let text;
+    try {
+      text = readUtf8(f.abs);
+    } catch {
+      continue;
+    }
+
+    for (const cls of definedClasses) {
+      // Match class="... foo ..." or className="... foo ..." or [class]="..." or class:foo
+      // Simple word-boundary check is fast and accurate enough for this purpose
+      if (text.includes(cls)) {
+        counts[cls]++;
+      }
+    }
+  }
+
+  return counts;
+}
+
+// Builds the static analysis summary section for the AI payload
+function buildStaticAnalysis(allFiles, opts) {
+  // 1. Collect CSS variable definitions from all style files
+  const cssVarDefs = {}; // name -> value
+  for (const f of allFiles) {
+    if (!STYLE_EXTS.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+    let text;
+    try { text = readUtf8(f.abs); } catch { continue; }
+    Object.assign(cssVarDefs, extractCSSVarDefinitions(text));
+  }
+
+  // 2. Collect all hex/rgb colors used across style AND template files
+  //    key: normalized color string, value: Set of file rels
+  const colorFileMap = {}; // color -> Set<rel>
+  const styleAndTemplateExts = new Set(['.css', '.scss', '.html', '.jsx', '.tsx', '.vue', '.svelte', '.js', '.ts']);
+
+  for (const f of allFiles) {
+    if (!styleAndTemplateExts.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+    let text;
+    try { text = readUtf8(f.abs); } catch { continue; }
+    const colors = extractColorsFromText(text);
+    for (const c of colors) {
+      if (!colorFileMap[c]) colorFileMap[c] = new Set();
+      colorFileMap[c].add(f.rel);
+    }
+  }
+
+  // 3. Collect CSS class definitions from style files
+  const definedClasses = new Set();
+  for (const f of allFiles) {
+    if (!STYLE_EXTS.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+    let text;
+    try { text = readUtf8(f.abs); } catch { continue; }
+    for (const cls of extractClassDefinitions(text)) definedClasses.add(cls);
+  }
+
+  // 4. Count usage of each defined class across template files
+  const classCounts = countClassUsageAcrossFiles(allFiles, definedClasses, opts);
+
+  // --- Build the summary text ---
+  const lines = [];
+
+  // Colors: only those used in 2+ files (single-use colors are noise)
+  const colorEntries = Object.entries(colorFileMap)
+    .filter(([, files]) => files.size >= 2)
+    .sort((a, b) => b[1].size - a[1].size);
+
+  if (colorEntries.length > 0) {
+    lines.push('## Color Usage (used in 2+ files)');
+    // Check for conflicts: same raw hex used alongside a CSS var that resolves to same value
+    const hexToVars = {}; // hex -> [var names that equal this hex]
+    for (const [varName, varValue] of Object.entries(cssVarDefs)) {
+      const norm = varValue.toLowerCase();
+      if (!hexToVars[norm]) hexToVars[norm] = [];
+      hexToVars[norm].push(varName);
+    }
+
+    for (const [color, files] of colorEntries.slice(0, 30)) {
+      const fileCount = files.size;
+      // Is this a var(--x) reference?
+      if (color.startsWith('--')) {
+        const def = cssVarDefs[color];
+        lines.push(`- ${color}${def ? ` (= ${def})` : ''} — ${fileCount} files`);
+        continue;
+      }
+      // Is this a raw hex that also has a CSS var equivalent? → conflict
+      const norm = color.toLowerCase();
+      const matchingVars = hexToVars[norm] || [];
+      if (matchingVars.length > 0) {
+        lines.push(`- ${color} — ${fileCount} files ⚠️ CONFLICT: also used as ${matchingVars.join(', ')}`);
+      } else {
+        lines.push(`- ${color} — ${fileCount} files`);
+      }
+    }
+    lines.push('');
+  }
+
+  // CSS variable definitions (color tokens)
+  if (Object.keys(cssVarDefs).length > 0) {
+    lines.push('## CSS Color Tokens (defined in stylesheets)');
+    for (const [name, value] of Object.entries(cssVarDefs).slice(0, 40)) {
+      lines.push(`- ${name}: ${value}`);
+    }
+    lines.push('');
+  }
+
+  // Global classes: only those used in 3+ files
+  const multiUseClasses = Object.entries(classCounts)
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (multiUseClasses.length > 0) {
+    lines.push('## Global CSS Classes (used in 3+ files)');
+    for (const [cls, count] of multiUseClasses.slice(0, 40)) {
+      lines.push(`- .${cls} — ${count} files`);
+    }
+    lines.push('');
+  }
+
+  // Single-use classes — these are likely scoped/local, flag them
+  const singleUseClasses = Object.entries(classCounts)
+    .filter(([, count]) => count === 1)
+    .map(([cls]) => cls);
+
+  if (singleUseClasses.length > 0) {
+    lines.push(`## Single-use CSS Classes (likely scoped — ${singleUseClasses.length} total, sample below)`);
+    lines.push(singleUseClasses.slice(0, 20).map(c => `.${c}`).join(', '));
+    lines.push('');
+  }
+
+  // Custom class prefixes: detect project-specific helper class families
+  // (e.g. theme-*, btn-*, text-display-*) that appear in 2+ files.
+  // These are NOT Tailwind utilities and NOT standard CSS — they're project conventions.
+  const knownFrameworkPrefixes = new Set([
+    // Tailwind
+    'bg-', 'text-', 'border-', 'flex', 'grid', 'gap-', 'p-', 'px-', 'py-', 'pt-', 'pb-', 'pl-', 'pr-',
+    'm-', 'mx-', 'my-', 'mt-', 'mb-', 'ml-', 'mr-', 'w-', 'h-', 'min-', 'max-',
+    'rounded', 'shadow', 'opacity', 'overflow', 'cursor-', 'pointer-', 'select-',
+    'font-', 'leading-', 'tracking-', 'align-', 'justify-', 'items-', 'content-',
+    'self-', 'place-', 'col-', 'row-', 'sr-', 'not-', 'space-', 'divide-',
+    'ring-', 'outline-', 'transition', 'duration-', 'ease-', 'delay-',
+    'scale-', 'rotate-', 'translate-', 'skew-', 'transform',
+    'z-', 'top-', 'right-', 'bottom-', 'left-', 'inset-', 'static', 'fixed',
+    'absolute', 'relative', 'sticky', 'hidden', 'block', 'inline', 'table',
+    'hover:', 'focus:', 'active:', 'disabled:', 'dark:', 'md:', 'lg:', 'xl:', 'sm:', '2xl:',
+    // Bootstrap
+    'd-', 'col-', 'row-', 'btn-', 'alert-', 'badge-', 'nav-', 'navbar-',
+    // Angular Material / PrimeNG
+    'mat-', 'p-', 'ng-',
+  ]);
+
+  const prefixFileMap = {}; // prefix -> Set<rel>
+  const wordRe = /[a-z][a-z0-9]*(?:-[a-z0-9]+)+/g; // hyphenated tokens only
+
+  const templateExtsForPrefixes = new Set(['.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.html']);
+  for (const f of allFiles) {
+    if (!templateExtsForPrefixes.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+    let text;
+    try { text = readUtf8(f.abs); } catch { continue; }
+
+    // Extract all hyphenated class-like tokens from the file
+    let m;
+    wordRe.lastIndex = 0;
+    while ((m = wordRe.exec(text)) !== null) {
+      const token = m[0];
+      // Get the prefix (everything up to and including the first dash)
+      const dashIdx = token.indexOf('-');
+      if (dashIdx < 1) continue;
+      const prefix = token.slice(0, dashIdx + 1);
+      // Skip if it's a known framework prefix
+      if (knownFrameworkPrefixes.has(prefix)) continue;
+      // Skip short prefixes that are likely noise
+      if (prefix.length < 3) continue;
+      if (!prefixFileMap[prefix]) prefixFileMap[prefix] = new Set();
+      prefixFileMap[prefix].add(f.rel);
+    }
+  }
+
+  const customPrefixes = Object.entries(prefixFileMap)
+    .filter(([, files]) => files.size >= 2)
+    .sort((a, b) => b[1].size - a[1].size);
+
+  if (customPrefixes.length > 0) {
+    lines.push('## Custom Class Prefixes (project-specific, used in 2+ files)');
+    lines.push('These are NOT Tailwind utilities. Document their purpose based on usage.');
+    for (const [prefix, files] of customPrefixes.slice(0, 20)) {
+      lines.push(`- ${prefix}* — ${files.size} files`);
+    }
+    lines.push('');
+  }
+
+  // Loading patterns: count how many files use each approach so AI can determine
+  // which is the "default" and which is situational.
+  const loadingPatterns = {
+    // Dedicated skeleton component (named *Skeleton or *TableSkeleton etc.)
+    skeletonComponent: [],
+    // Inline animate-pulse divs (manual skeleton without a component)
+    animatePulse: [],
+    // isLoading / loading boolean flag driving conditional render
+    loadingFlag: [],
+    // Spinner component or spinner class
+    spinner: [],
+  };
+
+  const componentExtsForLoading = new Set(['.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.html']);
+  for (const f of allFiles) {
+    if (!componentExtsForLoading.has(f.ext)) continue;
+    if (f.size > opts.maxFileSizeBytes) continue;
+    let text;
+    try { text = readUtf8(f.abs); } catch { continue; }
+
+    // Each file counted once per pattern type
+    if (/\bSkeleton\b/.test(text) && !/function\s+\w*Skeleton/.test(text)) {
+      // Uses a skeleton *component* (references it, not defines it)
+      loadingPatterns.skeletonComponent.push(f.rel);
+    }
+    if (/animate-pulse/.test(text)) {
+      loadingPatterns.animatePulse.push(f.rel);
+    }
+    if (/\bisLoading\b|\bloading\b/.test(text)) {
+      loadingPatterns.loadingFlag.push(f.rel);
+    }
+    if (/[Ss]pinner/.test(text)) {
+      loadingPatterns.spinner.push(f.rel);
+    }
+  }
+
+  const loadingEntries = [
+    ['Skeleton component (e.g. <XxxSkeleton />)', loadingPatterns.skeletonComponent],
+    ['Inline animate-pulse divs', loadingPatterns.animatePulse],
+    ['isLoading / loading boolean flag', loadingPatterns.loadingFlag],
+    ['Spinner component', loadingPatterns.spinner],
+  ].filter(([, files]) => files.length > 0)
+   .sort((a, b) => b[1].length - a[1].length);
+
+  if (loadingEntries.length > 0) {
+    lines.push('## Loading Patterns (frequency = how many files use each)');
+    for (const [label, files] of loadingEntries) {
+      lines.push(`- ${label}: ${files.length} files`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }
 
 function detectFrameworksFromDeps(depsObj) {
@@ -677,7 +1113,7 @@ async function main() {
   const files = walkProject(root, opts);
   const tw = selectTailwindConfig(files);
   const pkg = selectPackageJson(root, files, opts);
-  const globalStyles = selectGlobalStyles(files, 2);
+  const globalStyles = selectGlobalStyles(files, 4);
   const components = selectComponents(files, opts.maxFiles);
 
   const sections = [];
@@ -720,7 +1156,25 @@ async function main() {
   }
 
   for (const item of components) {
-    const content = extractComponentSnippet(item.f.abs, opts.maxChars);
+    let content;
+    // Shared/primitive components (button, input, etc.) must be sent in full —
+    // their dark mode, disabled states and exact class lists are the most
+    // valuable information in the whole payload. Only skip truncation when the
+    // file is small enough to not blow the budget (≤ 12 KB).
+    const charLimit = isSharedComponent(item.f) && item.f.size <= 12_000
+      ? item.f.size * 2   // effectively no truncation for small shared files
+      : opts.maxChars;
+
+    if (['.html', '.vue', '.svelte'].includes(item.f.ext)) {
+      try {
+        const raw = readUtf8(item.f.abs).replace(/\r\n/g, '\n');
+        content = truncateText(extractUIContext(raw), charLimit);
+      } catch (e) {
+        content = `/* failed to read file: ${e.message} */`;
+      }
+    } else {
+      content = extractComponentSnippet(item.f.abs, charLimit);
+    }
     sections.push({ rel: item.f.rel, tag: `component:${item.match.label}`, content });
   }
 
@@ -730,6 +1184,12 @@ async function main() {
     globalStyles,
     files,
   });
+
+  // Static frequency analysis — runs over all walked files, no extra I/O cost
+  const staticAnalysis = buildStaticAnalysis(files, opts);
+  if (staticAnalysis.trim()) {
+    sections.unshift({ rel: '[static-analysis]', tag: 'color-and-class-frequency', content: staticAnalysis });
+  }
 
   const payload = buildPayload({ detected, sections, opts });
 
@@ -758,30 +1218,103 @@ async function generateManifesto(context, focus) {
     ? `\nPay extra attention to: ${focus.trim()}\n`
     : '';
 
-  const prompt = `You are writing a design contract for an AI assistant.
+  const prompt = `You are statically analyzing a frontend project's source code.
+Your only goal: help an AI writing new UI code produce output that is visually and stylistically consistent with the existing codebase.
 ${focusBlock}
-This contract will be used by other LLMs to understand how UI is built in this project.
-They must follow it exactly when writing components, styles, or UI-related code.
-
-Here is the project context (styles, components, dependencies):
+Here is the project context (styles, components, config, dependencies):
 
 ${context}
 
-Extract and document the existing design system as a strict contract.
+Answer ONLY these five questions. Do not explain Angular, React, Vue, Tailwind, or any framework's own rules — the AI already knows them. Only document what is project-specific.
 
-Rules:
-- DO NOT suggest improvements
-- DO NOT redesign anything
-- DO NOT invent styles that are not in the code
-- Only document what actually exists
-- Be specific: use actual class names, values, and patterns from the code
-- Write rules another AI can follow without ambiguity
+---
 
-Format each section like this:
-## [Component or Topic]
-- Pattern: how it's used in this project
-- Do: what to follow
-- Don't: what to avoid`;
+## 1. Colors & Spacing — What is project-specific?
+
+Document every deviation from framework/library defaults.
+- Extract from actual usage in code, not just config. If a token exists in config but is never used, skip it.
+- If a color is used both as a design token AND as an inline hex/rgb value, mark it as a conflict: ⚠️ Conflict.
+- List actual class names or CSS variable names with their values.
+
+Format:
+- Pattern: [token/class name] = [value] — used in [where]
+- Do: use [token] for [purpose]
+- Don't: [what to avoid]
+
+---
+
+## 2. Global CSS Classes — What exists and when is each used?
+
+Document only classes defined in global stylesheets (e.g. styles.scss, globals.css, index.css) that appear in MORE THAN ONE component or file.
+- For each class: "Use this class when X. Do not use it when Y."
+- Skip classes that appear in only one place.
+
+Format:
+## [class name]
+- Pattern: [what it does structurally]
+- Do: use when [specific condition]
+- Don't: use when [specific condition]
+
+---
+
+## 3. Recurring UI Patterns — What HTML/template structures repeat?
+
+If the same HTML/template structure appears in 3+ different files, document it as a reusable pattern.
+- Give a real snippet (trimmed).
+- Reference at least one file where it can be found.
+
+Format:
+## [Pattern Name]
+- Pattern: [description]
+- Snippet:
+\`\`\`
+[actual HTML/template snippet]
+\`\`\`
+- Reference: [filename]
+- Do: [rule]
+- Don't: [rule]
+
+---
+
+## 4. What MUST NOT be used — Anti-patterns & conflicts
+
+This is the most critical section.
+- If two different methods achieve the same result in this codebase, identify which is correct and which is legacy/wrong.
+- If a Tailwind default was used instead of a project token, flag it.
+- If a pattern was clearly replaced by a newer approach, document both and explain.
+
+Format:
+## [Topic]
+- Pattern: [the correct approach]
+- Do: [correct method with actual class/value]
+- Don't: [wrong method] — reason: [why it's wrong in this project]
+
+---
+
+## 5. Dark Mode — How does it work?
+
+Document the exact mechanism used in this project:
+- What triggers dark mode? (class on html/body, CSS media query, data attribute, etc.)
+- Which classes or CSS variables change?
+- What tokens are used for dark vs light?
+- What must a developer do to add a new dark mode style?
+
+If no dark mode is found, write: "No dark mode detected."
+
+Format:
+## Dark Mode
+- Pattern: [mechanism]
+- Do: [exact steps to add dark mode support]
+- Don't: [what to avoid]
+
+---
+
+RULES FOR ALL SECTIONS:
+- Use actual class names, CSS variable names, and component names from the code
+- Never invent or suggest. Only document what exists.
+- Never write general framework rules.
+- If a section has nothing project-specific to report, write: "Nothing project-specific found."
+- Be terse. Bullet points only. No prose paragraphs.`;
 
   const res = await client.chat.completions.create({
     model: "gpt-5.4",
@@ -1002,22 +1535,26 @@ ${contract}
 ${targetCode}
 \`\`\`
 
-Your job: extract reusable UI patterns from the file that are NOT already in the contract.
+Your job: identify reusable UI patterns in this file that are NOT already documented in the contract.
 
-Critical rules:
-- DO NOT organize output by page name or file name
-- DO NOT write "Orders page does X" — write "Admin data rows use X"
-- DO NOT repeat anything already documented
-- DO NOT invent or suggest improvements
+Rules:
+- DO NOT repeat anything already in the contract — compare carefully
+- DO NOT organize by page or file name. "Orders page does X" is wrong. "Admin data rows use X" is right.
+- DO NOT invent, suggest improvements, or document non-UI logic
 - Only document what actually exists in the code
-- Group patterns by UI concept (Layout, Tabs, Cards, Modal, Table rows, etc.)
-- Use actual class names and component names from the code
-- Write rules another AI can follow when building similar UI
+- Group by UI concept: Layout, Tabs, Cards, Modal, Table rows, Form fields, etc.
+- Use actual class names, CSS variables, and component names from the code
 
-Output format — use this structure for each new pattern:
+For each new pattern, answer:
+1. Is there a color or spacing value here that deviates from framework defaults? If so, document it with the actual value.
+2. Is there a CSS class used here that appears to be global (not scoped)? Document when to use / not use it.
+3. Is there an HTML/template structure that looks like it would repeat across the project? Give a trimmed snippet.
+4. Is there something done in two ways here (old vs new pattern)? Flag it as a conflict.
+
+Output format for each new pattern:
 ## [UI Concept]
-- Pattern: [what it is, in reusable terms]
-- Uses: [actual classes or components]
+- Pattern: [reusable description — not page-specific]
+- Uses: [actual classes, tokens, or component names]
 - Do: [rule to follow]
 - Don't: [what to avoid]
 
