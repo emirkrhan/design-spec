@@ -1,5 +1,9 @@
 # design-spec
 
+[![npm version](https://img.shields.io/npm/v/design-spec.svg)](https://www.npmjs.com/package/design-spec)
+[![npm downloads](https://img.shields.io/npm/dm/design-spec.svg)](https://www.npmjs.com/package/design-spec)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 AI-powered design system documentation generator for frontend projects.
 
 Scans your codebase — components, stylesheets, config files — and generates a `DESIGN.md` that tells AI assistants exactly how your project looks: which colors, classes, patterns, and conventions are actually used.
@@ -94,6 +98,41 @@ Appends a one-line `DESIGN.md` reference to any AI rule files found in the proje
 | 3 | **Recurring UI Patterns** | HTML/template structures that repeat 3+ times, with code snippets |
 | 4 | **Anti-patterns** | Where two approaches exist for the same thing — which is correct, which is legacy |
 | 5 | **Dark Mode** | Exact mechanism, which tokens change, how to add support in a new component |
+
+### Example output
+
+```markdown
+## 1. Colors & Spacing
+
+> **Environment Context:** tailwind, scss
+> *All tokens below belong to this ecosystem.*
+
+### Backgrounds
+| Token / Class | Resolved Value | Do | Don't |
+| :--- | :--- | :--- | :--- |
+| `--bg-primary` | `#262624` | Page shells, card body | `bg-gray-900`, raw `#262624` |
+| `--bg-secondary` | `#30302e` | Sidebar panels, modals | Arbitrary panel dark |
+
+### Typography
+| Token / Class | Resolved Value | Do | Don't |
+| :--- | :--- | :--- | :--- |
+| `--text-primary` | `#ffffff` | Modal headings, nav labels | `text-white` on custom surfaces |
+| `--text-secondary` | `#d1d5db` | Card subtitles, descriptions | `text-gray-300` ad hoc |
+
+## 3. Recurring UI Patterns
+
+## Primary and secondary dialog actions
+- Snippet:
+\`\`\`html
+<div class="flex justify-end gap-2">
+  <button class="secondary-blue-button">Cancel</button>
+  <button class="primary-blue-button">Confirm</button>
+</div>
+\`\`\`
+- Reference: `src/app/shared/components/edit-title-dialog/edit-title-dialog.component.html`
+- Do: Right-aligned action row with standard button variants
+- Don't: Ad-hoc Tailwind button stacks
+```
 
 ---
 
