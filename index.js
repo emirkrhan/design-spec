@@ -4,14 +4,111 @@
 
 const fs = require('fs');
 const path = require('path');
-require("dotenv").config();
+const os = require('os');
 const OpenAI = require("openai");
 const inquirer = require("inquirer");
 const { default: ora } = require("ora");
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// ---------------------------------------------------------------------------
+// API key management
+// Priority:
+//   1. process.env.OPENAI_API_KEY (shell export) → use silently
+//   2. .env* files in cwd              → found, ask confirmation
+//   3. ~/.config/design-spec/config.json → use silently
+//   4. None found                      → prompt, save to global config
+// ---------------------------------------------------------------------------
+
+const CONFIG_DIR = path.join(os.homedir(), '.config', 'design-spec');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+
+const ENV_FILE_CANDIDATES = [
+  '.env.local',
+  '.env.development.local',
+  '.env.production.local',
+  '.env.development',
+  '.env.production',
+  '.env.test',
+  '.env',
+];
+
+function readGlobalConfig() {
+  try {
+    const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function writeGlobalConfig(data) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+function findKeyInEnvFiles(cwd) {
+  for (const filename of ENV_FILE_CANDIDATES) {
+    const filePath = path.join(cwd, filename);
+    try {
+      const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+      for (const line of lines) {
+        const match = line.match(/^\s*OPENAI_API_KEY\s*=\s*(.+)\s*$/);
+        if (match) {
+          const key = match[1].trim().replace(/^["']|["']$/g, '');
+          if (key) return { key, file: filename };
+        }
+      }
+    } catch {
+      // file doesn't exist or unreadable, skip
+    }
+  }
+  return null;
+}
+
+async function resolveApiKey(cwd) {
+  // 1. Shell environment variable — use silently
+  if (process.env.OPENAI_API_KEY) {
+    return process.env.OPENAI_API_KEY;
+  }
+
+  // 2. .env* files — found, ask confirmation
+  const envMatch = findKeyInEnvFiles(cwd);
+  if (envMatch) {
+    const { use } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'use',
+        message: `Found OPENAI_API_KEY in ${envMatch.file}. Use it?`,
+        default: true,
+      },
+    ]);
+    if (use) return envMatch.key;
+  }
+
+  // 3. Global config — use silently
+  const config = readGlobalConfig();
+  if (config.openaiApiKey) {
+    return config.openaiApiKey;
+  }
+
+  // 4. Nothing found — prompt and save
+  console.log('  No OpenAI API key found.\n');
+  const { apiKey } = await inquirer.prompt([
+    {
+      type: 'password',
+      name: 'apiKey',
+      message: 'Paste your OpenAI API key:',
+      validate: (v) => v && v.trim().startsWith('sk-') ? true : 'Key must start with sk-',
+    },
+  ]);
+
+  const trimmed = apiKey.trim();
+  writeGlobalConfig({ ...config, openaiApiKey: trimmed });
+  console.log(`  Key saved to ${CONFIG_FILE}\n`);
+
+  return trimmed;
+}
+
+let client;
 
 // A single-file CLI that collects a minimal, high-value UI context payload
 // from the current working directory (assumed to be a frontend project).
@@ -1078,6 +1175,9 @@ async function main() {
   }
 
   const root = process.cwd();
+
+  const apiKey = await resolveApiKey(root);
+  client = new OpenAI({ apiKey });
 
   if (opts.subcommand === 'patch') {
     await runPatch(root, opts);

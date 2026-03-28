@@ -1,25 +1,47 @@
 {
   "name": "design-spec",
   "version": "1.0.0",
-  "description": "AI-powered design system manifesto generator for frontend projects",
+  "description": "AI-powered design system documentation generator for any frontend project",
   "main": "index.js",
   "bin": {
     "design-spec": "./index.js"
   },
+  "files": [
+    "index.js"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [
     "design-system",
     "cli",
     "ai",
     "frontend",
-    "ux"
+    "design-tokens",
+    "css",
+    "tailwind",
+    "react",
+    "vue",
+    "angular",
+    "svelte",
+    "openai",
+    "code-analysis",
+    "ui"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Emirhan Körhan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emirkrhan/design-spec.git"
+  },
+  "homepage": "https://github.com/emirkrhan/design-spec#readme",
+  "bugs": {
+    "url": "https://github.com/emirkrhan/design-spec/issues"
+  },
   "dependencies": {
-    "dotenv": "^17.3.1",
     "inquirer": "^8.2.7",
     "openai": "^6.33.0",
     "ora": "^9.3.0"

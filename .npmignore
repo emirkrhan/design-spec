@@ -1,0 +1,18 @@
+# Development
+.env
+.env.*
+.claude/
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Build artifacts & local output
+node_modules/
+DESIGN.md
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
