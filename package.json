@@ -1,10 +1,10 @@
 {
   "name": "design-spec",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI-powered design system documentation generator for any frontend project",
   "main": "index.js",
   "bin": {
-    "design-spec": "./index.js"
+    "design-spec": "index.js"
   },
   "files": [
     "index.js",
@@ -37,7 +37,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/emirkrhan/design-spec.git"
+    "url": "git+https://github.com/emirkrhan/design-spec.git"
   },
   "homepage": "https://github.com/emirkrhan/design-spec#readme",
   "bugs": {
