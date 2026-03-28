@@ -1300,7 +1300,7 @@ async function main() {
   const outputAbs = path.join(root, opts.outputFile);
 
   try {
-    const result = await generateManifesto(payload, answers.focus);
+    const result = await generateManifesto(payload, answers.focus, detected);
     const ok = safeWriteFile(outputAbs, result, opts);
     if (ok) {
       aiSpinner.succeed(`DESIGN.md created`);
@@ -1313,108 +1313,144 @@ async function main() {
   }
 }
 
-async function generateManifesto(context, focus) {
+async function generateManifesto(context, focus, detected) {
   const focusBlock = focus && focus.trim()
     ? `\nPay extra attention to: ${focus.trim()}\n`
     : '';
 
-  const prompt = `You are statically analyzing a frontend project's source code.
-Your only goal: help an AI writing new UI code produce output that is visually and stylistically consistent with the existing codebase.
+  const detectedList = detected ? Array.from(detected).sort().join(', ') : 'unknown';
+
+  const prompt = `You are a strict UI linter analyzing a frontend project's source code.
+Your only goal: produce a machine-readable design contract that helps an AI write new UI code consistent with this codebase.
 ${focusBlock}
 Here is the project context (styles, components, config, dependencies):
 
 ${context}
 
-Answer ONLY these five questions. Do not explain Angular, React, Vue, Tailwind, or any framework's own rules — the AI already knows them. Only document what is project-specific.
+---
+
+ABSOLUTE LANGUAGE RULES — enforced for every cell, bullet, and line you write:
+- Telegraphic only. No full sentences. No verbs like "use", "ensure", "make sure", "remember to".
+- Bad Do: "Primary text on dark surfaces." (too generic — no location)
+- Good Do: "Modal headings, sidebar nav labels." (specific UI element or location)
+- Bad Don't: "Other dark base colors." (too vague)
+- Good Don't: "\`bg-gray-900\`, raw \`#262624\`" (specific wrong alternative)
+- Table cells must be ≤ 10 words each.
+- NEVER document a token without resolving its actual underlying value (e.g., font-family must show the resolved font name, not just the variable).
+- If a distinct UI sub-system is detected (e.g., "Wrap UI" vs standard), define its boundary explicitly (e.g., "Wrap UI = full-screen immersive modes only").
+- If two tokens resolve to the same value, their Do cells MUST differ by specific location — never write identical Do cells. That difference IS the tie-breaker for the AI choosing between them.
+- ALL code snippets (in any section) MUST use CSS variables (\`var(--token)\`) or Tailwind classes for colors. NEVER write raw hex or RGB in snippets if a project token exists. Contradicting your own anti-patterns inside examples is strictly forbidden.
 
 ---
 
-## 1. Colors & Spacing — What is project-specific?
-
-Document every deviation from framework/library defaults.
-- Extract from actual usage in code, not just config. If a token exists in config but is never used, skip it.
-- If a color is used both as a design token AND as an inline hex/rgb value, mark it as a conflict: ⚠️ Conflict.
-- List actual class names or CSS variable names with their values.
-
-Format:
-- Pattern: [token/class name] = [value] — used in [where]
-- Do: use [token] for [purpose]
-- Don't: [what to avoid]
+Answer ONLY these five sections. Do not explain framework rules — the AI already knows them. Only document what is project-specific.
 
 ---
 
-## 2. Global CSS Classes — What exists and when is each used?
+## 1. Colors & Spacing
 
-Document only classes defined in global stylesheets (e.g. styles.scss, globals.css, index.css) that appear in MORE THAN ONE component or file.
-- For each class: "Use this class when X. Do not use it when Y."
-- Skip classes that appear in only one place.
+Start this section with:
+> **Environment Context:** ${detectedList}
+> *All tokens below belong to this ecosystem.*
 
-Format:
-## [class name]
-- Pattern: [what it does structurally]
-- Do: use when [specific condition]
-- Don't: use when [specific condition]
+Rules:
+- Only tokens actually used in code (not just defined in config).
+- Skip one-off values with a single usage.
+- Do NOT flag conflicts here — conflicts go in Section 4 only.
+- Group standard tokens under subheadings: **Backgrounds**, **Typography**, **Borders**, **Spacing**, **Other**. Omit empty groups.
+- If a distinct UI sub-system exists (e.g. tokens prefixed with \`--wrap-\`, \`--modal-\`, \`--admin-\`), isolate them in a SEPARATE table under a subheading named after that sub-system (e.g. "### Wrap UI"). Never mix sub-system tokens with standard tokens in the same table.
+
+**Do column rule:** Must name the SPECIFIC UI element or location where this token is used (e.g. "sidebar background", "modal overlay", "active nav item"). NOT a generic purpose like "dark surface". If you cannot name a specific location, omit the row.
+**Don't column rule:** Must name a specific wrong alternative (e.g. "bg-gray-900", "raw #1a1a1a"). NOT a vague negation like "other dark colors".
+
+Each group = one Markdown table:
+
+### Backgrounds
+| Token / Class | Resolved Value | Do | Don't |
+| :--- | :--- | :--- | :--- |
+| \`--bg-primary\` | \`#1a1a1a\` | Sidebar, card body | \`bg-gray-900\`, raw \`#1a1a1a\` |
 
 ---
 
-## 3. Recurring UI Patterns — What HTML/template structures repeat?
+## 2. Global CSS Classes
 
-If the same HTML/template structure appears in 3+ different files, document it as a reusable pattern.
-- Give a real snippet (trimmed).
-- Reference at least one file where it can be found.
+Rules:
+- Only classes that are PROJECT-SPECIFIC overrides or conventions — defined in global stylesheets and used in 2+ files.
+- SKIP any class that is a standard Tailwind or CSS utility the framework already knows (\`.hidden\`, \`.border\`, \`.shadow\`, \`.flex\`, etc.). These must be omitted entirely.
+- If a class IS a framework utility but has a project-specific override in a global stylesheet, include it and mark it "Project override" in the Structure column.
 
-Format:
+Output as one Markdown table:
+
+| Class | Structure | Use when | Don't use when |
+| :--- | :--- | :--- | :--- |
+| \`.app-badge\` | shared badge shell | status labels, counts | custom inline badge |
+
+---
+
+## 3. Recurring UI Patterns
+
+Rules:
+- Only patterns appearing in 3+ files.
+- Trimmed snippet + one file reference.
+
+Format per pattern:
 ## [Pattern Name]
-- Pattern: [description]
 - Snippet:
 \`\`\`
-[actual HTML/template snippet]
+[trimmed HTML/template]
 \`\`\`
 - Reference: [filename]
-- Do: [rule]
-- Don't: [rule]
+- Do: [telegraphic rule]
+- Don't: [telegraphic rule]
 
 ---
 
-## 4. What MUST NOT be used — Anti-patterns & conflicts
+## 4. Anti-patterns & Conflicts
 
-This is the most critical section.
-- If two different methods achieve the same result in this codebase, identify which is correct and which is legacy/wrong.
-- If a Tailwind default was used instead of a project token, flag it.
-- If a pattern was clearly replaced by a newer approach, document both and explain.
+Rules:
+- STRICTLY structural, architectural, or cross-component issues only.
+- Do NOT repeat color/token rules from Section 1.
+- Color conflicts (token vs raw hex) belong here ONLY if they represent a structural misuse pattern.
+- Flag: wrong component used, legacy pattern vs new, Tailwind default used instead of project component.
 
-Format:
+Format per anti-pattern:
 ## [Topic]
-- Pattern: [the correct approach]
-- Do: [correct method with actual class/value]
-- Don't: [wrong method] — reason: [why it's wrong in this project]
+- Do: [correct approach — telegraphic]
+- Don't: [wrong approach] — [one-phrase reason]
 
 ---
 
-## 5. Dark Mode — How does it work?
+## 5. Dark Mode
 
-Document the exact mechanism used in this project:
-- What triggers dark mode? (class on html/body, CSS media query, data attribute, etc.)
-- Which classes or CSS variables change?
-- What tokens are used for dark vs light?
-- What must a developer do to add a new dark mode style?
+Document the exact mechanism:
+- Trigger (class on html/body / media query / data attribute)
+- Which variables or classes change
+- Steps to add a new dark mode style
 
-If no dark mode is found, write: "No dark mode detected."
+If no dark mode: write "No dark mode detected."
 
 Format:
 ## Dark Mode
-- Pattern: [mechanism]
-- Do: [exact steps to add dark mode support]
-- Don't: [what to avoid]
+- Trigger: [mechanism]
+- Snippet — how dark scope is applied (host element or wrapper):
+\`\`\`
+[shortest real snippet showing the .dark wrapper or host binding from the codebase]
+\`\`\`
+- SCSS usage example:
+\`\`\`scss
+.my-component \{ background: var(--bg-primary); \}
+.dark .my-component \{ background: var(--bg-secondary); \}
+\`\`\`
+- Do: [telegraphic steps]
+- Don't: [telegraphic rule]
 
 ---
 
-RULES FOR ALL SECTIONS:
-- Use actual class names, CSS variable names, and component names from the code
-- Never invent or suggest. Only document what exists.
+GLOBAL RULES:
+- Never invent. Only document what exists in the provided code.
 - Never write general framework rules.
-- If a section has nothing project-specific to report, write: "Nothing project-specific found."
-- Be terse. Bullet points only. No prose paragraphs.`;
+- If a section has nothing project-specific: "Nothing project-specific found."
+- No prose. No preamble. Start directly with ## 1.`;
 
   const res = await client.chat.completions.create({
     model: "gpt-5.4",
@@ -1573,12 +1609,15 @@ async function runPatch(root, opts) {
     return;
   }
 
-  // 4. Extract new patterns from target file
+  // 4. Detect module scope from file path (deterministic — no LLM guessing)
+  const moduleScope = detectModuleScope(opts.patchTarget);
+
+  // 5. Extract new patterns from target file
   const spinner = ora(`Analyzing ${opts.patchTarget}...`).start();
 
   let result;
   try {
-    result = await extractNewPatterns(contract, targetCode, opts.patchTarget);
+    result = await extractNewPatterns(contract, targetCode, opts.patchTarget, moduleScope);
     spinner.succeed('Analysis done');
   } catch (e) {
     spinner.fail(`AI call failed: ${e.message}`);
@@ -1587,14 +1626,38 @@ async function runPatch(root, opts) {
   }
 
   // 5. Nothing new found
-  if (!result.additions || result.additions.trim() === '') {
+  const hasChanges = result.section_1_rows?.length
+    || result.section_2_rows?.length
+    || result.section_3_patterns?.length
+    || result.section_4_antipatterns?.length
+    || result.section_5_update;
+
+  if (!hasChanges) {
     console.log('\nNo new patterns found. DESIGN.md is already up to date for this file.');
     return;
   }
 
-  // 6. Show what will be added
-  console.log('\n--- New patterns to add to DESIGN.md ---\n');
-  console.log(result.additions);
+  // 6. Preview what will be merged
+  console.log('\n--- Changes to merge into DESIGN.md ---\n');
+  if (result.section_1_rows?.length) {
+    console.log(`Section 1 (Colors & Spacing): +${result.section_1_rows.length} row(s)`);
+    result.section_1_rows.forEach(r => console.log(`  | ${r.token} | ${r.resolved_value} | ${r.do} | ${r.dont} |`));
+  }
+  if (result.section_2_rows?.length) {
+    console.log(`Section 2 (Global CSS Classes): +${result.section_2_rows.length} row(s)`);
+    result.section_2_rows.forEach(r => console.log(`  | ${r.class} | ${r.structure} | ${r.use_when} | ${r.dont_use_when} |`));
+  }
+  if (result.section_3_patterns?.length) {
+    console.log(`Section 3 (Recurring Patterns): +${result.section_3_patterns.length} pattern(s)`);
+    result.section_3_patterns.forEach(r => console.log(`  ## ${r.name}`));
+  }
+  if (result.section_4_antipatterns?.length) {
+    console.log(`Section 4 (Anti-patterns): +${result.section_4_antipatterns.length} entry(s)`);
+    result.section_4_antipatterns.forEach(r => console.log(`  ## ${r.topic}`));
+  }
+  if (result.section_5_update) {
+    console.log(`Section 5 (Dark Mode): update`);
+  }
   console.log('');
 
   // 7. Ask for confirmation
@@ -1602,7 +1665,7 @@ async function runPatch(root, opts) {
     {
       type: 'confirm',
       name: 'confirm',
-      message: 'Add these to DESIGN.md?',
+      message: 'Merge these into DESIGN.md?',
       default: true,
     },
   ]);
@@ -1612,10 +1675,10 @@ async function runPatch(root, opts) {
     return;
   }
 
-  // 8. Append to DESIGN.md
+  // 8. Merge into DESIGN.md
   try {
     const existing = readUtf8(designFile);
-    const updated = existing.trimEnd() + '\n\n' + result.additions.trim() + '\n';
+    const updated = mergeIntoDesignDoc(existing, result);
     fs.writeFileSync(designFile, updated, 'utf8');
     console.log(`\nDESIGN.md updated.`);
   } catch (e) {
@@ -1624,44 +1687,244 @@ async function runPatch(root, opts) {
   }
 }
 
-async function extractNewPatterns(contract, targetCode, targetPath) {
-  const prompt = `You are maintaining a design contract document used by AI assistants to write consistent UI code.
+// ---------------------------------------------------------------------------
+// mergeIntoDesignDoc
+// Merges structured patch result into the existing DESIGN.md content.
+// Strategy: find each section by its heading marker, insert new content at
+// the correct location within that section. Never relies on line numbers —
+// only on deterministic heading anchors.
+// ---------------------------------------------------------------------------
+
+function mergeIntoDesignDoc(existing, result) {
+  let doc = existing;
+
+  // Section 1: append table rows under the correct group subheading,
+  // or create a new group if it doesn't exist yet.
+  if (result.section_1_rows?.length) {
+    for (const row of result.section_1_rows) {
+      const group = row.group || 'Other';
+      const subheading = `### ${group}`;
+      const tableRow = `| \`${row.token}\` | \`${row.resolved_value}\` | ${row.do} | ${row.dont} |`;
+
+      if (doc.includes(subheading)) {
+        // Find the end of this group's table (last | ... | line before next heading or end)
+        const afterHeading = doc.indexOf(subheading) + subheading.length;
+        const nextHeadingMatch = doc.slice(afterHeading).search(/\n##/);
+        const sectionEnd = nextHeadingMatch === -1
+          ? doc.length
+          : afterHeading + nextHeadingMatch;
+
+        const sectionSlice = doc.slice(afterHeading, sectionEnd);
+        const lastTableRow = sectionSlice.lastIndexOf('\n|');
+        if (lastTableRow !== -1) {
+          const insertAt = afterHeading + lastTableRow + 1;
+          doc = doc.slice(0, insertAt) + tableRow + '\n' + doc.slice(insertAt);
+        } else {
+          // No table rows yet after heading — append after header row
+          const insertAt = afterHeading + sectionEnd - afterHeading;
+          doc = doc.slice(0, insertAt) + '\n' + tableRow + doc.slice(insertAt);
+        }
+      } else {
+        // Group subheading doesn't exist — find Section 1 end and append new group
+        const sec1End = findSectionEnd(doc, '## 1.');
+        const newGroup = `\n${subheading}\n| Token / Class | Resolved Value | Do | Don't |\n| :--- | :--- | :--- | :--- |\n${tableRow}\n`;
+        doc = doc.slice(0, sec1End) + newGroup + doc.slice(sec1End);
+      }
+    }
+  }
+
+  // Section 2: append rows to the existing table, or create table if missing.
+  if (result.section_2_rows?.length) {
+    for (const row of result.section_2_rows) {
+      const tableRow = `| \`${row.class}\` | ${row.structure} | ${row.use_when} | ${row.dont_use_when} |`;
+      const sec2Start = doc.indexOf('## 2.');
+      const sec2End = findSectionEnd(doc, '## 2.');
+
+      if (sec2Start !== -1) {
+        const sec2Slice = doc.slice(sec2Start, sec2End);
+        const lastTableRow = sec2Slice.lastIndexOf('\n|');
+
+        if (lastTableRow !== -1) {
+          const insertAt = sec2Start + lastTableRow + 1;
+          doc = doc.slice(0, insertAt) + tableRow + '\n' + doc.slice(insertAt);
+        } else {
+          const newTable = `\n| Class | Structure | Use when | Don't use when |\n| :--- | :--- | :--- | :--- |\n${tableRow}\n`;
+          doc = doc.slice(0, sec2End) + newTable + doc.slice(sec2End);
+        }
+      }
+    }
+  }
+
+  // Section 3: append each new pattern block before the section end.
+  if (result.section_3_patterns?.length) {
+    for (const pattern of result.section_3_patterns) {
+      const block = formatPatternBlock(pattern);
+      const insertAt = findSectionEnd(doc, '## 3.');
+      doc = doc.slice(0, insertAt) + '\n' + block + doc.slice(insertAt);
+    }
+  }
+
+  // Section 4: append each new anti-pattern block before the section end.
+  if (result.section_4_antipatterns?.length) {
+    for (const ap of result.section_4_antipatterns) {
+      const block = `## ${ap.topic}\n- Do: ${ap.do}\n- Don't: ${ap.dont}\n`;
+      const insertAt = findSectionEnd(doc, '## 4.');
+      doc = doc.slice(0, insertAt) + '\n' + block + doc.slice(insertAt);
+    }
+  }
+
+  // Section 5: append update note if provided.
+  if (result.section_5_update) {
+    const insertAt = findSectionEnd(doc, '## 5.');
+    doc = doc.slice(0, insertAt) + '\n' + result.section_5_update.trim() + '\n' + doc.slice(insertAt);
+  }
+
+  if (!doc.endsWith('\n')) doc += '\n';
+  return doc;
+}
+
+function findSectionEnd(doc, sectionMarker) {
+  const start = doc.indexOf(sectionMarker);
+  if (start === -1) return doc.length;
+
+  // Next top-level section starts with '\n## ' after current section
+  const afterStart = start + sectionMarker.length;
+  const nextSection = doc.slice(afterStart).search(/\n## \d/);
+  if (nextSection === -1) return doc.length;
+  return afterStart + nextSection;
+}
+
+// Extracts the nearest named module from a file path.
+// e.g. src/app/modules/admin/components/foo.ts → "admin"
+//      src/app/features/auth/login.component.ts → "auth"
+//      src/app/shared/components/button.ts      → "shared"
+//      src/pages/dashboard/index.tsx            → "dashboard"
+// Returns null if the path is clearly a global/root-level file.
+function detectModuleScope(filePath) {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  const segments = normalized.split('/');
+
+  // Known scope-indicating directory names that precede the module name
+  const SCOPE_PARENTS = new Set(['modules', 'features', 'pages', 'views', 'screens', 'sections']);
+  // Directories that are explicitly global — not a scoped module
+  const GLOBAL_DIRS = new Set(['shared', 'common', 'core', 'ui', 'primitives', 'lib', 'utils', 'helpers', 'layouts']);
+
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (SCOPE_PARENTS.has(segments[i]) && segments[i + 1]) {
+      const candidate = segments[i + 1];
+      if (!GLOBAL_DIRS.has(candidate)) return candidate;
+    }
+  }
+
+  // Fallback: if a segment itself is a well-known module name, use it
+  const KNOWN_MODULES = ['admin', 'auth', 'dashboard', 'settings', 'profile', 'onboarding', 'checkout', 'billing'];
+  for (const seg of segments) {
+    if (KNOWN_MODULES.includes(seg)) return seg;
+  }
+
+  return null; // global / unknown
+}
+
+function formatPatternBlock(pattern) {
+  const snippetLang = pattern.snippet_lang || '';
+  return `## ${pattern.name}\n- Snippet:\n\`\`\`${snippetLang}\n${pattern.snippet.trim()}\n\`\`\`\n- Reference: ${pattern.reference}\n- Do: ${pattern.do}\n- Don't: ${pattern.dont}\n`;
+}
+
+async function extractNewPatterns(contract, targetCode, targetPath, moduleScope) {
+  const scopeBlock = moduleScope
+    ? `## Detected Module Scope: "${moduleScope}"
+This file belongs to the "${moduleScope}" module. Apply SCOPE RULES below.`
+    : `## Detected Module Scope: global
+This file appears to be shared/global. Patterns extracted here apply project-wide.`;
+
+  const prompt = `You are a strict UI linter maintaining a design contract used by AI assistants to write consistent UI code.
 
 ## Existing Design Contract (DESIGN.md)
 ${contract}
 
 ## File to Analyze: ${targetPath}
+${scopeBlock}
 \`\`\`
 ${targetCode}
 \`\`\`
 
 Your job: identify reusable UI patterns in this file that are NOT already documented in the contract.
 
-Rules:
-- DO NOT repeat anything already in the contract — compare carefully
+---
+
+SCOPE RULES — enforced before writing any pattern:
+- First, determine if each pattern is GLOBAL (used identically across the whole app) or MODULE-SPECIFIC (only makes sense in the "${moduleScope || 'detected'}" module).
+- GLOBAL pattern: a shared button style, a universal token, a repeated form field structure. Name it plainly: "Search field", "Primary button".
+- MODULE-SPECIFIC pattern: a layout, a data grid, a page-level shell unique to this module. You MUST prefix the name with the module in brackets: "[${moduleScope || 'Module'}] Stat card grid".
+- For every MODULE-SPECIFIC pattern, the Don't rule MUST explicitly state: "Outside ${moduleScope || 'this'} module."
+- If scope is "global" (no module detected), treat all patterns as global — no prefix needed.
+
+---
+
+ABSOLUTE LANGUAGE RULES — enforced for every cell, bullet, and line you write:
+- Telegraphic only. No full sentences. No verbs like "use", "ensure", "make sure", "remember to".
+- Bad Do: "Primary text on dark surfaces." (too generic — no location)
+- Good Do: "Modal headings, sidebar nav labels." (specific UI element or location)
+- Bad Don't: "Other dark base colors." (too vague)
+- Good Don't: "\`bg-gray-900\`, raw \`#262624\`" (specific wrong alternative)
+- Table cells must be ≤ 10 words each.
+- NEVER document a token without resolving its actual underlying value.
+- If two tokens resolve to the same value, their Do cells MUST differ by specific location — never write identical Do cells.
+- ALL code snippets MUST use CSS variables (\`var(--token)\`) or Tailwind classes for colors. NEVER write raw hex or RGB in snippets if a project token exists. Contradicting the contract's anti-patterns inside examples is strictly forbidden.
+
+---
+
+CONTENT RULES:
+- DO NOT repeat anything already in the contract — compare carefully before writing.
 - DO NOT organize by page or file name. "Orders page does X" is wrong. "Admin data rows use X" is right.
-- DO NOT invent, suggest improvements, or document non-UI logic
-- Only document what actually exists in the code
-- Group by UI concept: Layout, Tabs, Cards, Modal, Table rows, Form fields, etc.
-- Use actual class names, CSS variables, and component names from the code
+- DO NOT invent, suggest improvements, or document non-UI logic.
+- Only document what actually exists in the code.
+- Skip standard Tailwind or CSS utilities the framework already knows (\`.hidden\`, \`.border\`, \`.shadow\`, etc.) unless they have a project-specific override.
+- Conflicts (token vs raw hex, old vs new pattern) go under an "Anti-patterns" heading only — never inline with token tables.
+- If a distinct UI sub-system is detected (tokens prefixed with \`--wrap-\`, \`--modal-\`, etc.), isolate them in a SEPARATE table under a subheading named after that sub-system.
 
-For each new pattern, answer:
-1. Is there a color or spacing value here that deviates from framework defaults? If so, document it with the actual value.
-2. Is there a CSS class used here that appears to be global (not scoped)? Document when to use / not use it.
-3. Is there an HTML/template structure that looks like it would repeat across the project? Give a trimmed snippet.
-4. Is there something done in two ways here (old vs new pattern)? Flag it as a conflict.
+---
 
-Output format for each new pattern:
-## [UI Concept]
-- Pattern: [reusable description — not page-specific]
-- Uses: [actual classes, tokens, or component names]
-- Do: [rule to follow]
-- Don't: [what to avoid]
+---
 
-Respond with valid JSON only.
+Respond with valid JSON only. Use this exact schema — empty arrays mean nothing new found for that section.
 
 {
-  "additions": "markdown string to append to DESIGN.md, or empty string if nothing new"
+  "section_1_rows": [
+    {
+      "group": "Backgrounds | Typography | Borders | Spacing | Other",
+      "token": "--token-name or tailwind-class",
+      "resolved_value": "#hex or value",
+      "do": "specific UI element/location (≤10 words)",
+      "dont": "specific wrong alternative (≤10 words)"
+    }
+  ],
+  "section_2_rows": [
+    {
+      "class": ".class-name",
+      "structure": "layout description",
+      "use_when": "condition",
+      "dont_use_when": "condition"
+    }
+  ],
+  "section_3_patterns": [
+    {
+      "name": "Pattern Name",
+      "snippet": "trimmed HTML/template — use var(--token) for colors, never raw hex",
+      "snippet_lang": "html",
+      "reference": "src/path/to/file.ext",
+      "do": "telegraphic rule",
+      "dont": "telegraphic rule"
+    }
+  ],
+  "section_4_antipatterns": [
+    {
+      "topic": "Topic Name",
+      "do": "correct approach — telegraphic",
+      "dont": "wrong approach — one-phrase reason"
+    }
+  ],
+  "section_5_update": "markdown string with dark mode update, or null if no change"
 }`;
 
   const res = await client.chat.completions.create({
