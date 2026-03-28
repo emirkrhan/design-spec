@@ -23,19 +23,15 @@ When you ask an AI to write new UI code, it produces generic output that doesn't
 
 ---
 
-## Setup
-
-Set your OpenAI API key as an environment variable:
+## Installation
 
 ```bash
-export OPENAI_API_KEY=sk-...
+npm install -g design-spec
 ```
 
-Or create a `.env` file in your project root:
+On first run, `design-spec` will ask for your OpenAI API key and save it globally — you won't need to enter it again.
 
-```
-OPENAI_API_KEY=sk-...
-```
+If you already have `OPENAI_API_KEY` set as an environment variable or in a `.env*` file in your project, it will detect and use it automatically.
 
 ---
 
@@ -46,7 +42,7 @@ OPENAI_API_KEY=sk-...
 Run this from the root of your frontend project:
 
 ```bash
-npx design-spec
+design-spec
 ```
 
 It will scan your project, analyze the code, and create a `DESIGN.md` file.
@@ -54,7 +50,7 @@ It will scan your project, analyze the code, and create a `DESIGN.md` file.
 If `DESIGN.md` already exists, use `--force` to overwrite:
 
 ```bash
-npx design-spec --force
+design-spec --force
 ```
 
 ---
@@ -64,7 +60,7 @@ npx design-spec --force
 After you build a new component, extract its patterns and merge them into your existing `DESIGN.md`:
 
 ```bash
-npx design-spec patch src/components/MyNewComponent.tsx
+design-spec patch src/components/MyNewComponent.tsx
 ```
 
 It shows you what's new (patterns not already documented) and asks for confirmation before writing.
@@ -76,7 +72,7 @@ It shows you what's new (patterns not already documented) and asks for confirmat
 Tell your AI assistant to use `DESIGN.md` as the source of truth for UI decisions:
 
 ```bash
-npx design-spec add
+design-spec add
 ```
 
 This appends a one-line reference to any rule files it finds in your project:
@@ -102,17 +98,17 @@ This appends a one-line reference to any rule files it finds in your project:
 ## Options
 
 ```
-design-spec                     Generate DESIGN.md for this project
-design-spec patch <file>        Extract new patterns from a file and add them to DESIGN.md
-design-spec add                 Register DESIGN.md reference in AI rule files
+design-spec                      Generate DESIGN.md for this project
+design-spec patch <file>         Extract new patterns from a file and add them to DESIGN.md
+design-spec add                  Register DESIGN.md reference in AI rule files
 
---max-files <n>        Max component files to include (default: 8)
---max-chars <n>        Max characters per snippet (default: 2000)
---max-total-chars <n>  Hard cap for entire analysis payload (default: 20000)
---max-file-size <n>    Skip files larger than n bytes (default: 204800)
---force, -f            Overwrite DESIGN.md if it already exists
---output <file>        Output filename (default: DESIGN.md)
---help, -h             Show help
+--max-files <n>         Max component files to include (default: 8)
+--max-chars <n>         Max characters per snippet (default: 2000)
+--max-total-chars <n>   Hard cap for entire analysis payload (default: 20000)
+--max-file-size <n>     Skip files larger than n bytes (default: 204800)
+--force, -f             Overwrite DESIGN.md if it already exists
+--output <file>         Output filename (default: DESIGN.md)
+--help, -h              Show help
 ```
 
 ---
