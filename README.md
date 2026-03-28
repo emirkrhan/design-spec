@@ -2,9 +2,9 @@
 
 AI-powered design system documentation generator for frontend projects.
 
-Scans your codebase — components, stylesheets, config files — and generates a `DESIGN.md` that tells AI assistants (Claude, Cursor, Copilot, Windsurf) exactly how your project looks: which colors, classes, patterns, and conventions are actually used.
+Scans your codebase — components, stylesheets, config files — and generates a `DESIGN.md` that tells AI assistants exactly how your project looks: which colors, classes, patterns, and conventions are actually used.
 
-Works with any frontend framework: **React, Vue, Angular, Svelte, Next.js, Nuxt, plain HTML** — and any CSS approach: **Tailwind, SCSS, CSS Modules, Bootstrap, or vanilla CSS**.
+Works with **React, Vue, Angular, Svelte, Next.js, Nuxt, plain HTML** and any CSS approach: **Tailwind, SCSS, CSS Modules, Bootstrap, vanilla CSS**.
 
 ---
 
@@ -31,7 +31,8 @@ npm install -g design-spec
 
 On first run, `design-spec` will ask for your OpenAI API key and save it globally — you won't need to enter it again.
 
-If you already have `OPENAI_API_KEY` set as an environment variable or in a `.env*` file in your project, it will detect and use it automatically.
+> [!NOTE]
+> If you already have `OPENAI_API_KEY` set as an environment variable or in a `.env*` file in your project, it will detect and confirm with you before using it.
 
 ---
 
@@ -39,47 +40,46 @@ If you already have `OPENAI_API_KEY` set as an environment variable or in a `.en
 
 ### Generate `DESIGN.md`
 
-Run this from the root of your frontend project:
+Run from the root of your frontend project:
 
 ```bash
 design-spec
 ```
 
-It will scan your project, analyze the code, and create a `DESIGN.md` file.
-
-If `DESIGN.md` already exists, use `--force` to overwrite:
+Scans the project, calls OpenAI, writes `DESIGN.md`.
 
 ```bash
-design-spec --force
+design-spec --force   # overwrite if DESIGN.md already exists
 ```
 
 ---
 
-### Update with new patterns from a specific file
+### Update with a new file
 
-After you build a new component, extract its patterns and merge them into your existing `DESIGN.md`:
+After building a new component, extract its patterns and merge them into your existing `DESIGN.md`:
 
 ```bash
 design-spec patch src/components/MyNewComponent.tsx
 ```
 
-It shows you what's new (patterns not already documented) and asks for confirmation before writing.
+Shows what's new (patterns not already documented) and asks for confirmation before writing.
 
 ---
 
-### Register `DESIGN.md` with your AI assistant
-
-Tell your AI assistant to use `DESIGN.md` as the source of truth for UI decisions:
+### Register with your AI assistant
 
 ```bash
 design-spec add
 ```
 
-This appends a one-line reference to any rule files it finds in your project:
-- `CLAUDE.md` (Claude Code)
-- `.cursorrules` (Cursor)
-- `.windsurfrules` (Windsurf)
-- `.github/copilot-instructions.md` (GitHub Copilot)
+Appends a one-line `DESIGN.md` reference to any AI rule files found in the project:
+
+| File | Assistant |
+|------|-----------|
+| `CLAUDE.md` | Claude Code |
+| `.cursorrules` | Cursor |
+| `.windsurfrules` | Windsurf |
+| `.github/copilot-instructions.md` | GitHub Copilot |
 
 ---
 
@@ -87,11 +87,13 @@ This appends a one-line reference to any rule files it finds in your project:
 
 `DESIGN.md` answers five questions about your project:
 
-1. **Colors & Spacing** — which tokens, CSS variables, and values are actually used (with conflict detection if the same color appears both as a token and a raw hex value)
-2. **Global CSS Classes** — classes defined in global stylesheets and used across multiple components, with Do/Don't rules
-3. **Recurring UI Patterns** — HTML/template structures that repeat 3+ times, with actual code snippets
-4. **Anti-patterns** — places where two approaches exist for the same thing; documents which is correct and which is legacy
-5. **Dark Mode** — the exact mechanism: which class or attribute triggers it, which tokens change, what a developer must do to support it in a new component
+| # | Section | What it documents |
+|---|---------|-------------------|
+| 1 | **Colors & Spacing** | Tokens, CSS variables, and values actually used — with conflict detection |
+| 2 | **Global CSS Classes** | Classes used across multiple components, with Do/Don't rules |
+| 3 | **Recurring UI Patterns** | HTML/template structures that repeat 3+ times, with code snippets |
+| 4 | **Anti-patterns** | Where two approaches exist for the same thing — which is correct, which is legacy |
+| 5 | **Dark Mode** | Exact mechanism, which tokens change, how to add support in a new component |
 
 ---
 
@@ -115,9 +117,9 @@ design-spec add                  Register DESIGN.md reference in AI rule files
 
 ## How it works
 
-1. Walks your project directory (skips `node_modules`, build outputs, test files, lockfiles, etc.)
-2. Selects the most relevant files: Tailwind config, `package.json`, global stylesheets, and component files scored by type and location
-3. Runs static frequency analysis: extracts color usage, CSS variable definitions, class usage counts, loading patterns, and project-specific class prefixes
+1. Walks the project directory — skips `node_modules`, build outputs, test files, lockfiles
+2. Scores and selects the most relevant files: Tailwind config, `package.json`, global stylesheets, component files
+3. Runs static frequency analysis: color usage, CSS variable definitions, class counts, loading patterns, project-specific class prefixes
 4. Sends a compact payload to OpenAI with a structured prompt
 5. Writes the result to `DESIGN.md`
 
