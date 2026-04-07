@@ -4,9 +4,9 @@
 [![npm downloads](https://img.shields.io/npm/dm/design-spec.svg)](https://www.npmjs.com/package/design-spec)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI-powered design system documentation generator for frontend projects.
+AI-powered design system documentation + MCP context server for frontend projects.
 
-Scans your codebase — components, stylesheets, config files — and generates a `DESIGN.md` that tells AI assistants exactly how your project looks: which colors, classes, patterns, and conventions are actually used.
+Scans your codebase — components, stylesheets, config files — and generates a `DESIGN.md` that tells AI assistants exactly how your project looks. Then exposes an MCP server so Claude Code and Codex automatically use those rules when writing new UI code — **without you having to say anything**.
 
 Works with **React, Vue, Angular, Svelte, Next.js, Nuxt, plain HTML** and any CSS approach: **Tailwind, SCSS, CSS Modules, Bootstrap, vanilla CSS**.
 
@@ -16,14 +16,19 @@ Works with **React, Vue, Angular, Svelte, Next.js, Nuxt, plain HTML** and any CS
 
 When you ask an AI to write new UI code, it produces generic output that doesn't match your project's visual style. It uses wrong colors, misses your custom CSS classes, and ignores patterns already established in the codebase.
 
-`design-spec` fixes this by generating a concise, project-specific design contract from your actual source code — not invented rules.
+`design-spec` fixes this in two layers:
+
+1. **`DESIGN.md`** — a concise, project-specific design contract generated from your actual source code
+2. **MCP server** — automatically feeds relevant rules + real code examples to the AI before it writes anything
+
+The result: the AI sees how your project is built and copies it — without you lifting a finger.
 
 ---
 
 ## Requirements
 
 - Node.js 18+
-- An [OpenAI API key](https://platform.openai.com/api-keys)
+- An [OpenAI API key](https://platform.openai.com/api-keys) — only needed for the initial `DESIGN.md` generation. The MCP server works entirely offline.
 
 ---
 
@@ -33,50 +38,62 @@ When you ask an AI to write new UI code, it produces generic output that doesn't
 npm install -g design-spec
 ```
 
-On first run, `design-spec` will ask for your OpenAI API key and save it globally — you won't need to enter it again.
+---
 
-> [!NOTE]
-> If you already have `OPENAI_API_KEY` set as an environment variable or in a `.env*` file in your project, it will detect and confirm with you before using it.
+## Quick start
+
+```bash
+# 1. Generate DESIGN.md for your project (needs OpenAI key, run once)
+cd your-project
+design-spec
+
+# 2. Register the MCP server with Claude Code (run once)
+claude mcp add design-spec -- design-spec-mcp
+
+# 3. Wire it into your AI rule files + optionally install the Write hook
+design-spec add
+```
+
+After these three steps: every time Claude Code creates a new UI file, it automatically calls `design_context` first and follows your project's patterns.
 
 ---
 
-## Usage
+## Commands
 
-### Generate `DESIGN.md`
+### `design-spec` — Generate `DESIGN.md`
 
 Run from the root of your frontend project:
 
 ```bash
 design-spec
+design-spec --force   # overwrite if DESIGN.md already exists
 ```
 
 Scans the project, calls OpenAI, writes `DESIGN.md`.
 
-```bash
-design-spec --force   # overwrite if DESIGN.md already exists
-```
-
 ---
 
-### Update with a new file
+### `design-spec patch <file>` — Update with a new file
 
-After building a new component, extract its patterns and merge them into your existing `DESIGN.md`:
+After building a new component, extract its patterns and merge them into `DESIGN.md`:
 
 ```bash
 design-spec patch src/components/MyNewComponent.tsx
 ```
 
-Shows what's new (patterns not already documented) and asks for confirmation before writing.
+Shows what's new and asks for confirmation before writing.
 
 ---
 
-### Register with your AI assistant
+### `design-spec add` — Integrate with your AI assistant
 
 ```bash
 design-spec add
 ```
 
-Appends a one-line `DESIGN.md` reference to any AI rule files found in the project:
+Does two things:
+
+**1. Adds a strong, specific rule** to your AI rule files:
 
 | File | Assistant |
 |------|-----------|
@@ -85,18 +102,58 @@ Appends a one-line `DESIGN.md` reference to any AI rule files found in the proje
 | `.windsurfrules` | Windsurf |
 | `.github/copilot-instructions.md` | GitHub Copilot |
 
+The rule tells Claude Code to call `design_context` before creating any new UI file, and `design_lint` after any UI change.
+
+**2. Optionally installs a Write hook** — when you choose this, Claude Code is reminded to call `design_context` every time it creates a new file. Adds a small token cost per new file; disabled by default.
+
 ---
 
-## What gets generated
+## MCP tools
 
-`DESIGN.md` answers five questions about your project:
+The MCP server (`design-spec-mcp`) exposes two tools. No OpenAI key required — everything runs locally.
+
+### `design_context`
+
+Call before writing any UI code. Given a task description, returns:
+- Relevant rules from `DESIGN.md` (tokens, patterns, anti-patterns)
+- Real code examples from your project that match the task
+- Explicit instructions: follow these patterns, don't invent new ones
+
+**Modes:**
+- **Component mode** — triggered by tasks mentioning buttons, inputs, modals, etc. Returns the closest matching component files.
+- **Page/layout mode** — triggered by tasks mentioning page, admin, dashboard, screen, etc. Returns page skeleton structure, layout wrappers, route guards in addition to component examples.
+
+```
+# Example: "add a nav item to the sidebar"
+→ Returns: sidebar token rules + NavItem.tsx snippet + Sidebar.tsx snippet
+
+# Example: "create a new admin page"
+→ Returns: layout wrapper pattern + existing admin page anatomy + relevant component snippets
+```
+
+### `design_lint`
+
+Call after any UI change. Scans a file or directory for design violations:
+
+| Rule | Severity | Example |
+|------|----------|---------|
+| `hard-coded-color` | error | `color: #3b82f6` in CSS instead of a token |
+| `inline-style-color` | error | `style={{ color: '#fff' }}` in JSX |
+| `tailwind-arbitrary-color` | warning | `text-[#fff]` instead of a project token |
+| `off-grid-spacing` | warning | `padding: 13px` (not a multiple of 4) |
+
+Returns a report with file path + line number for every violation.
+
+---
+
+## What `DESIGN.md` contains
 
 | # | Section | What it documents |
 |---|---------|-------------------|
-| 1 | **Colors & Spacing** | Tokens, CSS variables, and values actually used — with conflict detection |
+| 1 | **Colors & Spacing** | Tokens and CSS variables actually used — with conflict detection |
 | 2 | **Global CSS Classes** | Classes used across multiple components, with Do/Don't rules |
 | 3 | **Recurring UI Patterns** | HTML/template structures that repeat 3+ times, with code snippets |
-| 4 | **Anti-patterns** | Where two approaches exist for the same thing — which is correct, which is legacy |
+| 4 | **Anti-patterns** | Where two approaches exist — which is correct, which is legacy |
 | 5 | **Dark Mode** | Exact mechanism, which tokens change, how to add support in a new component |
 
 ### Example output
@@ -105,34 +162,45 @@ Appends a one-line `DESIGN.md` reference to any AI rule files found in the proje
 ## 1. Colors & Spacing
 
 > **Environment Context:** tailwind, scss
-> *All tokens below belong to this ecosystem.*
 
 ### Backgrounds
 | Token / Class | Resolved Value | Do | Don't |
-| :--- | :--- | :--- | :--- |
 | `--bg-primary` | `#262624` | Page shells, card body | `bg-gray-900`, raw `#262624` |
 | `--bg-secondary` | `#30302e` | Sidebar panels, modals | Arbitrary panel dark |
-
-### Typography
-| Token / Class | Resolved Value | Do | Don't |
-| :--- | :--- | :--- | :--- |
-| `--text-primary` | `#ffffff` | Modal headings, nav labels | `text-white` on custom surfaces |
-| `--text-secondary` | `#d1d5db` | Card subtitles, descriptions | `text-gray-300` ad hoc |
 
 ## 3. Recurring UI Patterns
 
 ## Primary and secondary dialog actions
 - Snippet:
-\`\`\`html
+```html
 <div class="flex justify-end gap-2">
   <button class="secondary-blue-button">Cancel</button>
   <button class="primary-blue-button">Confirm</button>
 </div>
-\`\`\`
-- Reference: `src/app/shared/components/edit-title-dialog/edit-title-dialog.component.html`
+```
 - Do: Right-aligned action row with standard button variants
 - Don't: Ad-hoc Tailwind button stacks
 ```
+
+---
+
+## How it works
+
+### `design-spec` (CLI — one-time)
+1. Walks the project — skips `node_modules`, build outputs, tests, lockfiles
+2. Scores and selects the most relevant files: Tailwind config, `package.json`, global stylesheets, components
+3. Runs static frequency analysis: color usage, CSS variable definitions, class counts, loading patterns
+4. Sends a compact payload to OpenAI with a structured prompt
+5. Writes the result to `DESIGN.md`
+
+### `design-spec-mcp` (MCP server — always-on)
+1. Claude Code calls `design_context` with your task description
+2. Keywords are extracted and matched against file names **and file contents**
+3. Top matching files are scored and selected
+4. Relevant `DESIGN.md` sections + real code snippets are bundled and returned
+5. Claude Code uses this bundle to write code that matches your existing patterns
+
+No AI calls, no network requests. Runs entirely on your machine.
 
 ---
 
@@ -141,7 +209,7 @@ Appends a one-line `DESIGN.md` reference to any AI rule files found in the proje
 ```
 design-spec                      Generate DESIGN.md for this project
 design-spec patch <file>         Extract new patterns from a file and add them to DESIGN.md
-design-spec add                  Register DESIGN.md reference in AI rule files
+design-spec add                  Integrate with AI rule files and optionally install Write hook
 
 --max-files <n>         Max component files to include (default: 8)
 --max-chars <n>         Max characters per snippet (default: 2000)
@@ -151,18 +219,6 @@ design-spec add                  Register DESIGN.md reference in AI rule files
 --output <file>         Output filename (default: DESIGN.md)
 --help, -h              Show help
 ```
-
----
-
-## How it works
-
-1. Walks the project directory — skips `node_modules`, build outputs, test files, lockfiles
-2. Scores and selects the most relevant files: Tailwind config, `package.json`, global stylesheets, component files
-3. Runs static frequency analysis: color usage, CSS variable definitions, class counts, loading patterns, project-specific class prefixes
-4. Sends a compact payload to OpenAI with a structured prompt
-5. Writes the result to `DESIGN.md`
-
-The payload respects a hard character limit so API costs stay low and the prompt fits in any model's context window.
 
 ---
 

@@ -1514,56 +1514,165 @@ const RULE_FILES = [
   { file: '.github/copilot-instructions.md', label: 'GitHub Copilot' },
 ];
 
-const DESIGN_RULE = `\nConsider \`DESIGN.md\` in the project root as the primary source for UI/design preferences in this project.\n`;
+// Strong, specific rule for CLAUDE.md — tells the LLM exactly when to call
+// design_context and what to do with the result. Intentionally verbose so
+// the LLM cannot "forget" or interpret it loosely.
+const CLAUDE_MD_RULE = `
+## design-spec (UI consistency)
+
+When creating a **new** UI file (component, page, layout) via the Write tool:
+1. Call the \`design_context\` MCP tool with a short description of what you are building.
+2. Read the returned rules and code examples carefully.
+3. Follow them — same tokens, same structure, same patterns.
+4. Do NOT invent new class names, color values, or layout patterns not present in the examples.
+
+When editing an existing file: skip step 1 unless the change introduces new UI patterns.
+
+After any UI change (new or edit): call \`design_lint\` on the modified file.
+If lint reports errors, fix them before finishing.
+`;
+
+// Weaker reference for non-Claude tools (they don't have MCP)
+const GENERIC_RULE = `
+## design-spec
+
+Refer to \`DESIGN.md\` in the project root as the source of truth for UI/design conventions.
+Follow its token, class, and pattern rules when writing or editing UI code.
+`;
+
+// ---------------------------------------------------------------------------
+// Hook helpers
+// ---------------------------------------------------------------------------
+
+const SETTINGS_PATH_LOCAL  = path.join('.claude', 'settings.json');
+
+function readSettingsJson(settingsAbs) {
+  try {
+    return JSON.parse(fs.readFileSync(settingsAbs, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettingsJson(settingsAbs, data) {
+  const dir = path.dirname(settingsAbs);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(settingsAbs, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+function hookAlreadyExists(settings) {
+  const hooks = settings?.hooks?.PreToolUse;
+  if (!Array.isArray(hooks)) return false;
+  return hooks.some(h => {
+    const cmds = h?.hooks?.map(x => x?.command || '').join(' ') || '';
+    return cmds.includes('design_context') || cmds.includes('design-spec');
+  });
+}
+
+function addWriteHook(settingsAbs) {
+  const settings = readSettingsJson(settingsAbs);
+
+  if (hookAlreadyExists(settings)) return false; // already there
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.PreToolUse) settings.hooks.PreToolUse = [];
+
+  // Trigger only on Write (new file creation), not Edit
+  settings.hooks.PreToolUse.push({
+    matcher: 'Write',
+    hooks: [
+      {
+        type: 'command',
+        command: 'echo "[design-spec] New file detected — run design_context before writing UI code."',
+      },
+    ],
+  });
+
+  writeSettingsJson(settingsAbs, settings);
+  return true;
+}
 
 async function runAdd(root) {
   console.log('\n  design-spec add\n');
 
-  // Find which rule files exist in the project
+  // ── Step 1: Rule files ──────────────────────────────────────────────────
   const found = RULE_FILES.filter(({ file }) => fs.existsSync(path.join(root, file)));
 
   if (found.length === 0) {
-    console.log('No LLM rule files found in this project (CLAUDE.md, .cursorrules, etc.)');
-    console.log('Create one first, then run "design-spec add" again.');
-    return;
+    console.log('No LLM rule files found (CLAUDE.md, .cursorrules, etc.)');
+    console.log('Create one first, then run "design-spec add" again.\n');
+  } else {
+    console.log('Found rule files:\n');
+    found.forEach(({ file, label }) => console.log(`  ${label}: ${file}`));
+    console.log('');
+
+    const { confirmRules } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmRules',
+        message: 'Add design-spec rules to these files?',
+        default: true,
+      },
+    ]);
+
+    if (confirmRules) {
+      for (const { file, label } of found) {
+        const abs     = path.join(root, file);
+        const content = readUtf8(abs);
+        const isClaude = file === 'CLAUDE.md';
+        const marker   = isClaude ? 'design_context' : 'DESIGN.md';
+
+        if (content.includes(marker)) {
+          console.log(`  skipped ${file} — already configured`);
+          continue;
+        }
+
+        const rule = isClaude ? CLAUDE_MD_RULE : GENERIC_RULE;
+        try {
+          fs.writeFileSync(abs, content.trimEnd() + rule, 'utf8');
+          console.log(`  updated ${file}`);
+        } catch (e) {
+          stderr(`  [error] could not update ${file}: ${e.message}`);
+        }
+      }
+    }
   }
 
-  // Show which files will be updated
-  console.log('Found rule files:\n');
-  found.forEach(({ file, label }) => console.log(`  ${label}: ${file}`));
   console.log('');
 
-  const { confirm } = await inquirer.prompt([
+  // ── Step 2: Write hook (opt-in) ─────────────────────────────────────────
+  console.log('  Automatic hook (optional)');
+  console.log('  When you create a new file, Claude Code will remind itself to');
+  console.log('  call design_context first. This uses a small amount of extra tokens.\n');
+
+  const { confirmHook } = await inquirer.prompt([
     {
       type: 'confirm',
-      name: 'confirm',
-      message: 'Add DESIGN.md reference to all of them?',
-      default: true,
+      name: 'confirmHook',
+      message: 'Install Write hook? (opt-in — adds a small token cost per new file)',
+      default: false,
     },
   ]);
 
-  if (!confirm) {
-    console.log('Aborted. No changes made.');
-    return;
-  }
-
-  // Append to each file (skip if already contains the reference)
-  for (const { file } of found) {
-    const abs = path.join(root, file);
-    const content = readUtf8(abs);
-
-    if (content.includes('DESIGN.md')) {
-      console.log(`  skipped ${file} — already references DESIGN.md`);
-      continue;
-    }
-
+  if (confirmHook) {
+    const settingsAbs = path.join(root, SETTINGS_PATH_LOCAL);
     try {
-      fs.writeFileSync(abs, content.trimEnd() + DESIGN_RULE, 'utf8');
-      console.log(`  updated ${file}`);
+      const added = addWriteHook(settingsAbs);
+      if (added) {
+        console.log(`  hook added → ${SETTINGS_PATH_LOCAL}`);
+      } else {
+        console.log(`  skipped — hook already exists in ${SETTINGS_PATH_LOCAL}`);
+      }
     } catch (e) {
-      stderr(`  [error] could not update ${file}: ${e.message}`);
+      stderr(`  [error] could not write settings.json: ${e.message}`);
     }
+  } else {
+    console.log('  Hook skipped. You can always add it later by running "design-spec add" again.');
   }
+
+  console.log('');
+  console.log('  Done. design-spec is now integrated into your AI workflow.');
+  console.log('  Next time Claude Code creates a new UI file, it will call design_context first.\n');
 }
 
 async function runPatch(root, opts) {
